@@ -1,0 +1,29 @@
+# patchwork-deploy configuration example
+hosts:
+  - name: web-primary
+    address: 192.168.1.10
+    user: deploy
+    port: 22
+    key_file: ~/.ssh/id_rsa
+
+  - name: web-secondary
+    address: 192.168.1.11
+    user: deploy
+    port: 22
+    key_file: ~/.ssh/id_rsa
+
+# Ordered list of patch script filenames (relative to patch_dir)
+patches:
+  - 001_create_dirs.sh
+  - 002_install_deps.sh
+  - 003_migrate_db.sh
+
+options:
+  # Automatically run rollback scripts on failure
+  rollback_on_failure: true
+
+  # Directory containing patch scripts (default: "patches")
+  patch_dir: patches
+
+  # File used to track applied patches on each host (default: ".patchwork_state")
+  state_file: .patchwork_state
