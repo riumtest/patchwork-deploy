@@ -38,3 +38,12 @@ func TestLoad_ExampleConfig(t *testing.T) {
 		t.Error("expected rollback_on_failure=true in example config")
 	}
 }
+
+// TestLoad_MissingFile verifies that loading a non-existent config file returns
+// an error rather than silently succeeding with an empty config.
+func TestLoad_MissingFile(t *testing.T) {
+	_, err := config.Load("nonexistent_file_that_does_not_exist.yaml")
+	if err == nil {
+		t.Fatal("expected an error when loading a missing config file, got nil")
+	}
+}
