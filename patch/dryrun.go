@@ -57,13 +57,7 @@ func (dr *DryRunRunner) Run() error {
 			skipped++
 			continue
 		}
-		f, err := os.Open(p.Path)
-		if err != nil {
-			return fmt.Errorf("dry-run: opening patch %q: %w", p.Name, err)
-		}
-		err = dr.exec.Run(p.Name, f)
-		f.Close()
-		if err != nil {
+		if err := dr.runPatch(p); err != nil {
 			return err
 		}
 	}
@@ -71,4 +65,14 @@ func (dr *DryRunRunner) Run() error {
 	fmt.Fprintf(dr.exec.out, "[dry-run] complete: %d skipped, %d would apply\n",
 		skipped, len(patches)-skipped)
 	return nil
+}
+
+// runPatch opens a single patch file and passes it to the executor.
+func (dr *DryRunRunner) runPatch(p Patch) error {
+	f, err := os.Open(p.Path)
+	if err != nil {
+		return fmt.Errorf("dry-run: opening patch %q: %w", p.Name, err)
+	}
+	defer f.Close()
+	return dr.exec.Run(p.Name, f)
 }
