@@ -3,73 +3,64 @@ package config
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
 
-// Config holds the top-level deployment configuration.
+// HostConfig holds SSH connection details for a single target host.
+type HostConfig struct {
+	Address string `yaml:"address"`
+	User    string `yaml:"user"`
+	KeyPath string `yaml:"key_path"`
+}
+
+// Config is the top-level deployment configuration.
 type Config struct {
-	Hosts   []Host   `yaml:"hosts"`
-	Patches []string `yaml:"patches"`
-	Options Options  `yaml:"options"`
+	Hosts      []HostConfig  `yaml:"hosts"`
+	PatchDir   string        `yaml:"patch_dir"`
+	StateFile  string        `yaml:"state_file"`
+	AuditFile  string        `yaml:"audit_file"`
+	Timeout    time.Duration `yaml:"timeout"`
+	LockDir    string        `yaml:"lock_dir"`
 }
 
-// Host describes a remote target for patch deployment.
-type Host struct {
-	Name     string `yaml:"name"`
-	Address  string `yaml:"address"`
-	User     string `yaml:"user"`
-	Port     int    `yaml:"port"`
-	KeyFile  string `yaml:"key_file"`
-}
-
-// Options controls deployment behaviour.
-type Options struct {
-	RollbackOnFailure bool   `yaml:"rollback_on_failure"`
-	PatchDir          string `yaml:"patch_dir"`
-	StateFile         string `yaml:"state_file"`
-}
-
-// Load reads and parses a YAML config file at the given path.
+// Load reads and validates a Config from the YAML file at path.
 func Load(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("reading config %q: %w", path, err)
+		return nil, fmt.Errorf("config: read %s: %w", path, err)
 	}
 
 	var cfg Config
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
-		return nil, fmt.Errorf("parsing config %q: %w", path, err)
+		return nil, fmt.Errorf("config: parse %s: %w", path, err)
 	}
 
-	if err := cfg.validate(); err != nil {
-		return nil, fmt.Errorf("invalid config: %w", err)
+	if len(cfg.Hosts) == 0 {
+		return nil, fmt.Errorf("config: no hosts defined")
+	}
+	for i, h := range cfg.Hosts {
+		if h.Address == "" {
+			return nil, fmt.Errorf("config: host[%d] missing address", i)
+		}
 	}
 
-	if cfg.Options.PatchDir == "" {
-		cfg.Options.PatchDir = "patches"
+	if cfg.PatchDir == "" {
+		cfg.PatchDir = "patches"
 	}
-	if cfg.Options.StateFile == "" {
-		cfg.Options.StateFile = ".patchwork_state"
+	if cfg.StateFile == "" {
+		cfg.StateFile = "deploy-state.json"
+	}
+	if cfg.AuditFile == "" {
+		cfg.AuditFile = "deploy-audit.log"
+	}
+	if cfg.Timeout == 0 {
+		cfg.Timeout = 30 * time.Second
+	}
+	if cfg.LockDir == "" {
+		cfg.LockDir = "."
 	}
 
 	return &cfg, nil
-}
-
-func (c *Config) validate() error {
-	if len(c.Hosts) == 0 {
-		return fmt.Errorf("at least one host must be defined")
-	}
-	for i, h := range c.Hosts {
-		if h.Address == "" {
-			return fmt.Errorf("host[%d] missing address", i)
-		}
-		if h.User == "" {
-			return fmt.Errorf("host[%d] missing user", i)
-		}
-		if h.Port == 0 {
-			c.Hosts[i].Port = 22
-		}
-	}
-	return nil
 }
