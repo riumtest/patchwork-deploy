@@ -3,12 +3,12 @@ package cmd
 import (
 	"fmt"
 
-	"github.com/yourorg/patchwork-deploy/config"
-	"github.com/yourorg/patchwork-deploy/patch"
+	"github.com/razvanmarinn/patchwork-deploy/config"
+	"github.com/razvanmarinn/patchwork-deploy/patch"
 )
 
-// RunStatus loads the deployment state and prints which patches have been
-// applied and which are pending for the configured patch directory.
+// RunStatus prints the current deployment status: which patches have been
+// applied and which are pending, based on the state file and patch directory.
 func RunStatus(configPath string) error {
 	cfg, err := config.Load(configPath)
 	if err != nil {
@@ -31,23 +31,24 @@ func RunStatus(configPath string) error {
 		return nil
 	}
 
-	applied := 0
-	pending := 0
+	appliedCount := 0
+	pendingCount := 0
 
-	fmt.Printf("%-40s %s\n", "PATCH", "STATUS")
-	fmt.Println("---------------------------------------- ---------")
+	fmt.Println("Patch Status:")
+	fmt.Println("------------")
 	for _, p := range patches {
-		status := "pending"
 		if state.IsApplied(p.Name) {
-			status = "applied"
-			applied++
+			fmt.Printf("  [applied]  %s\n", p.Name)
+			appliedCount++
 		} else {
-			pending++
+			fmt.Printf("  [pending]  %s\n", p.Name)
+			pendingCount++
 		}
-		fmt.Printf("%-40s %s\n", p.Name, status)
 	}
 
-	fmt.Printf("\nTotal: %d patches (%d applied, %d pending)\n",
-		len(patches), applied, pending)
+	fmt.Println("------------")
+	fmt.Printf("Total: %d patches (%d applied, %d pending)\n",
+		len(patches), appliedCount, pendingCount)
+
 	return nil
 }
