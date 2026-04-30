@@ -1,70 +1,88 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 	"os"
 
-	"github.com/patchwork-deploy/internal/config"
-	"github.com/patchwork-deploy/internal/deploy"
+	"github.com/patchwork-deploy/cmd"
 )
 
-const version = "0.1.0"
+func usage() {
+	fmt.Fprintf(os.Stderr, `patchwork-deploy — minimal deployment orchestration tool
+
+Usage:
+  patchwork-deploy <command> [flags]
+
+Commands:
+  apply       Apply pending patch scripts
+  rollback    Rollback applied patches
+  dry-run     Preview patches without applying
+  status      Show applied and pending patches
+  verify      Verify patch checksums
+  lock-status Show deployment lock status
+  unlock      Release deployment lock
+  audit       Show audit log
+  notify-test Send a test notification
+  retry       Apply patches with retry policy
+  snapshot    Save a snapshot of current state
+  snapshots   List all saved snapshots
+
+Flags:
+  -config string   Path to deploy config YAML (default: deploy.yaml)
+`)
+}
 
 func main() {
-	var (
-		configFile = flag.String("config", "patchwork.yml", "Path to deployment config file")
-		patchDir   = flag.String("patches", "patches", "Directory containing patch scripts")
-		rollback   = flag.Bool("rollback", false, "Roll back the last applied patch")
-		dryRun     = flag.Bool("dry-run", false, "Simulate deployment without executing remote commands")
-		showVer    = flag.Bool("version", false, "Print version and exit")
-	)
-	flag.Parse()
-
-	if *showVer {
-		fmt.Printf("patchwork-deploy v%s\n", version)
-		os.Exit(0)
-	}
-
-	// Load deployment configuration
-	cfg, err := config.Load(*configFile)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "error loading config: %v\n", err)
+	if len(os.Args) < 2 {
+		usage()
 		os.Exit(1)
 	}
 
-	// Override patch directory if specified in config and not overridden by flag
-	if cfg.PatchDir != "" && *patchDir == "patches" {
-		*patchDir = cfg.PatchDir
-	}
-
-	orchestrator, err := deploy.NewOrchestrator(cfg, *patchDir, *dryRun)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "error initialising orchestrator: %v\n", err)
-		os.Exit(1)
-	}
-	defer orchestrator.Close()
-
-	if *rollback {
-		fmt.Println("Rolling back last applied patch...")
-		if err := orchestrator.Rollback(); err != nil {
-			fmt.Fprintf(os.Stderr, "rollback failed: %v\n", err)
-			os.Exit(1)
+	configPath := "deploy.yaml"
+	for i, arg := range os.Args[2:] {
+		if arg == "-config" && i+1 < len(os.Args[2:]) {
+			configPath = os.Args[3+i]
 		}
-		fmt.Println("Rollback completed successfully.")
-		return
 	}
 
-	fmt.Println("Starting patch deployment...")
-	applied, err := orchestrator.Apply()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "deployment failed after %d patch(es): %v\n", applied, err)
+	var err error
+	switch os.Args[1] {
+	case "apply":
+		err = cmd.RunApply(configPath)
+	case "rollback":
+		err = cmd.RunRollback(configPath)
+	case "dry-run":
+		err = cmd.RunDryRun(configPath)
+	case "status":
+		err = cmd.RunStatus(configPath)
+	case "verify":
+		err = cmd.RunVerify(configPath)
+	case "lock-status":
+		err = cmd.RunLockStatus(configPath)
+	case "unlock":
+		err = cmd.RunUnlock(configPath)
+	case "audit":
+		err = cmd.RunAudit(configPath)
+	case "notify-test":
+		err = cmd.RunNotifyTest(configPath)
+	case "retry":
+		err = cmd.RunRetry(configPath)
+	case "snapshot":
+		label := ""
+		if len(os.Args) >= 3 {
+			label = os.Args[2]
+		}
+		err = cmd.RunSnapshot(configPath, label)
+	case "snapshots":
+		err = cmd.RunSnapshotList(configPath)
+	default:
+		fmt.Fprintf(os.Stderr, "unknown command: %s\n", os.Args[1])
+		usage()
 		os.Exit(1)
 	}
 
-	if applied == 0 {
-		fmt.Println("Nothing to apply — target is already up to date.")
-	} else {
-		fmt.Printf("Successfully applied %d patch(es).\n", applied)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
 	}
 }
