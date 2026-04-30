@@ -64,6 +64,20 @@ func (v *Verifier) Verify(expected map[string]string) error {
 	return nil
 }
 
+// ChecksumsAsMap returns the computed checksums as a map of filename to digest,
+// suitable for use as the expected argument to Verify.
+func (v *Verifier) ChecksumsAsMap() (map[string]string, error) {
+	checksums, err := v.ComputeChecksums()
+	if err != nil {
+		return nil, err
+	}
+	m := make(map[string]string, len(checksums))
+	for _, c := range checksums {
+		m[c.Name] = c.Digest
+	}
+	return m, nil
+}
+
 func sha256File(path string) (string, error) {
 	f, err := os.Open(path)
 	if err != nil {
