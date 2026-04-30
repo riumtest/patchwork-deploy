@@ -3,70 +3,75 @@ package patch
 import (
 	"fmt"
 	"io"
-	"log"
 )
 
-// Executor defines the interface for running a script on a remote host.
+// Executor runs a script provided as an io.Reader.
 type Executor interface {
-	Run(script io.Reader) error
+	RunReader(name string, r io.Reader) error
 }
 
-// Runner applies ordered patches to a target host, tracking state and
-// supporting rollback on failure.
+// Runner applies ordered patches, tracking state and recording to an audit log.
 type Runner struct {
-	loader   *Loader
-	state    *State
-	executor Executor
-	logger   *log.Logger
+	exec    Executor
+	state   *State
+	audit   *AuditLog
+	out     io.Writer
 }
 
-// NewRunner creates a Runner wired up with the given loader, state store,
-// and SSH executor.
-func NewRunner(loader *Loader, state *State, executor Executor, logger *log.Logger) *Runner {
-	return &Runner{
-		loader:   loader,
-		state:    state,
-		executor: executor,
-		logger:   logger,
-	}
+// NewRunner creates a Runner with the provided dependencies.
+func NewRunner(exec Executor, state *State, audit *AuditLog, out io.Writer) *Runner {
+	return &Runner{exec: exec, state: state, audit: audit, out: out}
 }
 
-// Apply iterates over all patches in order and runs any that have not yet
-// been applied. On failure it rolls back the state for the failed patch.
-func (r *Runner) Apply() error {
-	patches, err := r.loader.Load()
-	if err != nil {
-		return fmt.Errorf("loading patches: %w", err)
-	}
-
+// Run applies all patches that have not yet been applied.
+// On failure, it triggers rollback of previously applied patches in this run.
+func (r *Runner) Run(patches []Patch) error {
+	var applied []Patch
 	for _, p := range patches {
 		if r.state.IsApplied(p.Name) {
-			r.logger.Printf("skipping already-applied patch: %s", p.Name)
+			fmt.Fprintf(r.out, "[skip] %s already applied\n", p.Name)
 			continue
 		}
-
-		r.logger.Printf("applying patch: %s", p.Name)
-
-		f, err := p.Open()
-		if err != nil {
-			return fmt.Errorf("opening patch %s: %w", p.Name, err)
+		if err := r.applyOne(p); err != nil {
+			fmt.Fprintf(r.out, "[fail] %s: %v — rolling back\n", p.Name, err)
+			_ = r.rollback(applied)
+			return err
 		}
-
-		runErr := r.executor.Run(f)
-		f.Close()
-
-		if runErr != nil {
-			r.logger.Printf("patch %s failed, rolling back: %v", p.Name, runErr)
-			r.state.Rollback(p.Name)
-			return fmt.Errorf("patch %s: %w", p.Name, runErr)
-		}
-
-		if err := r.state.Record(p.Name); err != nil {
-			return fmt.Errorf("recording patch %s: %w", p.Name, err)
-		}
-
-		r.logger.Printf("patch applied successfully: %s", p.Name)
+		applied = append(applied, p)
 	}
+	return nil
+}
 
+// applyOne executes a single patch and records it in state and audit.
+func (r *Runner) applyOne(p Patch) error {
+	fmt.Fprintf(r.out, "[apply] %s\n", p.Name)
+	f, err := openPatch(p)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	if err := r.exec.RunReader(p.Name, f); err != nil {
+		if r.audit != nil {
+			_ = r.audit.Record(AuditEntry{Patch: p.Name, Action: "apply", Status: "fail", Detail: err.Error()})
+		}
+		return err
+	}
+	_ = r.state.Record(p.Name)
+	if r.audit != nil {
+		_ = r.audit.Record(AuditEntry{Patch: p.Name, Action: "apply", Status: "ok"})
+	}
+	return nil
+}
+
+// rollback reverts patches in reverse order.
+func (r *Runner) rollback(patches []Patch) error {
+	for i := len(patches) - 1; i >= 0; i-- {
+		p := patches[i]
+		fmt.Fprintf(r.out, "[rollback] %s\n", p.Name)
+		_ = r.state.Rollback(p.Name)
+		if r.audit != nil {
+			_ = r.audit.Record(AuditEntry{Patch: p.Name, Action: "rollback", Status: "ok"})
+		}
+	}
 	return nil
 }
