@@ -99,3 +99,26 @@ func TestSnapshotStore_CorruptFileReturnsError(t *testing.T) {
 		t.Error("expected error for corrupt file")
 	}
 }
+
+func TestSnapshotStore_PersistsAcrossInstances(t *testing.T) {
+	_, path := makeSnapshotStore(t)
+
+	// Save a snapshot using the first store instance.
+	store1 := NewSnapshotStore(path)
+	if err := store1.Save(Snapshot{Label: "v1", Applied: []string{"001.sh"}}); err != nil {
+		t.Fatalf("save error: %v", err)
+	}
+
+	// Load the snapshot using a separate store instance pointing to the same file.
+	store2 := NewSnapshotStore(path)
+	snap, err := store2.Latest()
+	if err != nil {
+		t.Fatalf("latest error: %v", err)
+	}
+	if snap == nil {
+		t.Fatal("expected snapshot, got nil")
+	}
+	if snap.Label != "v1" {
+		t.Errorf("expected label v1, got %s", snap.Label)
+	}
+}
