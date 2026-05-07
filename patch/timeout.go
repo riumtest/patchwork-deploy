@@ -2,6 +2,7 @@ package patch
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"time"
@@ -47,6 +48,9 @@ func NewTimeoutExecutor(inner Executor, policy TimeoutPolicy) *TimeoutExecutor {
 	return &TimeoutExecutor{inner: inner, policy: policy}
 }
 
+// ErrTimeout is returned when a patch exceeds its allotted execution time.
+var ErrTimeout = errors.New("patch timeout exceeded")
+
 // Run executes the patch script via the inner executor, cancelling after the
 // timeout defined by the policy for the given patch name.
 func (t *TimeoutExecutor) Run(ctx context.Context, name string, r io.Reader) error {
@@ -56,7 +60,7 @@ func (t *TimeoutExecutor) Run(ctx context.Context, name string, r io.Reader) err
 
 	err := t.inner.Run(ctx, name, r)
 	if ctx.Err() == context.DeadlineExceeded {
-		return fmt.Errorf("patch %q exceeded timeout of %s", name, timeout)
+		return fmt.Errorf("patch %q exceeded timeout of %s: %w", name, timeout, ErrTimeout)
 	}
 	return err
 }
