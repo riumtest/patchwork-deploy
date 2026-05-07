@@ -52,3 +52,22 @@ func TestRunApply_EmptyPatchDir(t *testing.T) {
 		t.Fatalf("unexpected error for empty patch dir: %v", err)
 	}
 }
+
+func TestRunApply_MissingPatchDir(t *testing.T) {
+	stateFile := filepath.Join(t.TempDir(), "state.json")
+
+	cfgContent := "patch_dir: /nonexistent/patch/dir\n" +
+		"state_file: " + stateFile + "\n" +
+		"hosts:\n" +
+		"  - address: 127.0.0.1:22\n" +
+		"    user: deploy\n" +
+		"    key_path: /nonexistent/key\n"
+
+	p := writeTempApplyConfig(t, cfgContent)
+
+	// A patch_dir that does not exist should produce an error.
+	err := cmd.RunApply(p)
+	if err == nil {
+		t.Fatal("expected error for missing patch dir, got nil")
+	}
+}
