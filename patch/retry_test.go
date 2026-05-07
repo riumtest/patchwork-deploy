@@ -47,13 +47,20 @@ func makeRetryFixture(t *testing.T) ([]Patch, *State, *AuditLog) {
 	return patches, st, al
 }
 
+// newRetryRunner is a test helper that builds a RetryRunner with a zero-delay
+// policy, reducing boilerplate in retry test cases.
+func newRetryRunner(t *testing.T, exec Executor, st *State, al *AuditLog, maxAttempts int) *RetryRunner {
+	t.Helper()
+	var buf bytes.Buffer
+	inner := NewRunner(exec, st, al, &buf)
+	policy := RetryPolicy{MaxAttempts: maxAttempts, Delay: 0}
+	return NewRetryRunner(inner, policy, &buf)
+}
+
 func TestRetry_SucceedsAfterTransientFailure(t *testing.T) {
 	patches, st, al := makeRetryFixture(t)
 	exec := &failingExecutor{attemptsPerPatch: map[string]int{"001-init.sh": 2}}
-	var buf bytes.Buffer
-	inner := NewRunner(exec, st, al, &buf)
-	policy := RetryPolicy{MaxAttempts: 3, Delay: 0}
-	rr := NewRetryRunner(inner, policy, &buf)
+	rr := newRetryRunner(t, exec, st, al, 3)
 	if err := rr.Apply(patches); err != nil {
 		t.Fatalf("expected success, got: %v", err)
 	}
@@ -65,10 +72,7 @@ func TestRetry_SucceedsAfterTransientFailure(t *testing.T) {
 func TestRetry_FailsAfterMaxAttempts(t *testing.T) {
 	patches, st, al := makeRetryFixture(t)
 	exec := &failingExecutor{attemptsPerPatch: map[string]int{"001-init.sh": 99}}
-	var buf bytes.Buffer
-	inner := NewRunner(exec, st, al, &buf)
-	policy := RetryPolicy{MaxAttempts: 2, Delay: 0}
-	rr := NewRetryRunner(inner, policy, &buf)
+	rr := newRetryRunner(t, exec, st, al, 2)
 	if err := rr.Apply(patches); err == nil {
 		t.Fatal("expected failure, got nil")
 	}
@@ -87,10 +91,7 @@ func TestRetry_DefaultPolicy(t *testing.T) {
 func TestRetry_DoesNotRetryOnSuccess(t *testing.T) {
 	patches, st, al := makeRetryFixture(t)
 	exec := &failingExecutor{attemptsPerPatch: map[string]int{"001-init.sh": 1}}
-	var buf bytes.Buffer
-	inner := NewRunner(exec, st, al, &buf)
-	policy := RetryPolicy{MaxAttempts: 3, Delay: 0}
-	rr := NewRetryRunner(inner, policy, &buf)
+	rr := newRetryRunner(t, exec, st, al, 3)
 	if err := rr.Apply(patches); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
