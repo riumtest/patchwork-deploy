@@ -10,7 +10,16 @@ import (
 )
 
 // RunQuota applies patches up to a configured quota limit.
+// maxPatches sets the hard cap on patches applied per host; warnAt triggers
+// a warning when the number of applied patches reaches that threshold.
 func RunQuota(cfgPath string, maxPatches int, warnAt int) error {
+	if maxPatches <= 0 {
+		return fmt.Errorf("maxPatches must be greater than zero, got %d", maxPatches)
+	}
+	if warnAt > maxPatches {
+		return fmt.Errorf("warnAt (%d) must not exceed maxPatches (%d)", warnAt, maxPatches)
+	}
+
 	cfg, err := config.Load(cfgPath)
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
